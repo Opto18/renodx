@@ -14,6 +14,7 @@
 #include <include/reshade.hpp>
 
 #include "../../mods/shader.hpp"
+#define RENODX_MODS_SWAPCHAIN_VERSION 2
 #include "../../mods/swapchain.hpp"
 #include "../../templates/settings.hpp"
 #include "../../utils/date.hpp"
@@ -43,7 +44,10 @@ renodx::utils::settings::Settings settings = renodx::templates::settings::JoinSe
         {"ColorGradeHighlightSaturation", &shader_injection.tone_map_highlight_saturation},
         {"ColorGradeBlowout", &shader_injection.tone_map_blowout},
         {"ColorGradeFlare", &shader_injection.tone_map_flare},
-        // {"FxBloom", &shader_injection.fxBloom},
+        {"ToneMapHueCorrection", &shader_injection.tone_map_hue_correction},
+        {"ToneMapHueShift", &shader_injection.tone_map_hue_shift},
+        {"FxBloom", &shader_injection.fxBloom},
+        {"FxVignette", &shader_injection.fxVignette},
     }),
     {
         new renodx::utils::settings::Setting{
@@ -97,7 +101,7 @@ renodx::utils::settings::Settings settings = renodx::templates::settings::JoinSe
         },
         new renodx::utils::settings::Setting{
             .value_type = renodx::utils::settings::SettingValueType::TEXT,
-            .label = "Game mod by Ritsu, RenoDX Framework by ShortFuse. Shout-out to Pumbo & Lilium for the support!",
+            .label = "Game mod by Ritsu, Updated by Opto, RenoDX Framework by ShortFuse. Shout-out to Pumbo & Lilium for the support!",
             .section = "About",
         },
         new renodx::utils::settings::Setting{
@@ -107,6 +111,20 @@ renodx::utils::settings::Settings settings = renodx::templates::settings::JoinSe
         },
     },
 });
+
+void ConfigureSettingsLabels() {
+  for (auto* setting : settings) {
+    if (setting->key == "ToneMapType") {
+      setting->labels = {"Vanilla", "Neutwo"};
+    } else if (setting->key == "ToneMapHueCorrection") {
+      setting->default_value = 75.f;
+      setting->can_reset = true;
+    } else if (setting->key == "ToneMapHueShift") {
+      setting->default_value = 30.f;
+      setting->can_reset = true;
+    }
+  }
+}
 
 void OnPresetOff() {
   renodx::utils::settings::UpdateSettings({
@@ -121,6 +139,10 @@ void OnPresetOff() {
       {"ColorGradeHighlightSaturation", 50.f},
       {"ColorGradeBlowout", 0.f},
       {"ColorGradeFlare", 0.f},
+      {"ToneMapHueCorrection", 75.f},
+      {"ToneMapHueShift", 30.f},
+      {"FxBloom", 50.f},
+      {"FxVignette", 50.f},
   });
 }
 
@@ -131,8 +153,13 @@ void OnInitSwapchain(reshade::api::swapchain* swapchain, bool resize) {
   fired_on_init_swapchain = true;
   auto peak = renodx::utils::swapchain::GetPeakNits(swapchain);
   if (peak.has_value()) {
-    settings[2]->default_value = peak.value();
-    settings[2]->can_reset = true;
+    for (auto* setting : settings) {
+      if (setting->key == "ToneMapPeakNits") {
+        setting->default_value = peak.value();
+        setting->can_reset = true;
+        break;
+      }
+    }
   }
 }
 
@@ -146,37 +173,20 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
     case DLL_PROCESS_ATTACH:
       if (!reshade::register_addon(h_module)) return FALSE;
       reshade::register_event<reshade::addon_event::init_swapchain>(OnInitSwapchain);
+      ConfigureSettingsLabels();
 
       // while (IsDebuggerPresent() == 0) Sleep(100);
 
       renodx::mods::shader::force_pipeline_cloning = true;
-      // renodx::mods::swapchain::force_borderless = true;
-      // renodx::mods::swapchain::prevent_full_screen = true;
 
       renodx::mods::shader::expected_constant_buffer_space = 50;
-      renodx::mods::swapchain::expected_constant_buffer_space = 50;
 
       renodx::mods::shader::expected_constant_buffer_index = 13;
-      renodx::mods::swapchain::expected_constant_buffer_index = 13;
 
       renodx::mods::shader::allow_multiple_push_constants = true;
-      renodx::mods::swapchain::use_resource_cloning = true;
+      renodx::mods::swapchain::SetUseHDR10(true);
+      renodx::mods::swapchain::use_resource_cloning = false;
 
-      // renodx::mods::swapchain::use_resize_buffer = true;
-      // renodx::mods::swapchain::use_resize_buffer_on_demand = true;
-
-      // DLAA issues
-      /* renodx::mods::swapchain::swap_chain_upgrade_targets.push_back({
-          .old_format = reshade::api::format::r8g8b8a8_unorm,
-          .new_format = reshade::api::format::r16g16b16a16_float,
-          .use_resource_view_cloning = true,
-      }); */
-
-      renodx::mods::swapchain::swap_chain_upgrade_targets.push_back({
-          .old_format = reshade::api::format::r10g10b10a2_unorm,
-          .new_format = reshade::api::format::r16g16b16a16_float,
-          .use_resource_view_cloning = true,
-      });
 
       break;
     case DLL_PROCESS_DETACH:
@@ -188,7 +198,8 @@ BOOL APIENTRY DllMain(HMODULE h_module, DWORD fdw_reason, LPVOID lpv_reserved) {
 
   renodx::utils::settings::Use(fdw_reason, &settings, &OnPresetOff);
 
-  // renodx::mods::swapchain::Use(fdw_reason, &shader_injection);
+  renodx::utils::swapchain::Use(fdw_reason);
+  renodx::mods::swapchain::Use(fdw_reason, &shader_injection);
 
   renodx::mods::shader::Use(fdw_reason, custom_shaders, &shader_injection);
 

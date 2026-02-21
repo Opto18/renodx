@@ -59,7 +59,9 @@ float4 main(
   float3 _104 = bloomTex.Sample(linearClampSS, float2(TEXCOORD_1.x, TEXCOORD_1.y));
   float4 _108 = luminanceTex.Load(int3(0, 0, 0));
   float3 _112 = hdrTex.Load(int3(int(SV_Position.x), int(SV_Position.y), 0));
-  _112.rgb *= CalculateExposure(_108.y);  // New Luminance
+  if (RENODX_TONE_MAP_TYPE) {
+    _112.rgb *= CalculateExposure(_108.y);
+  }
   // Special case for inventory
   if (RENODX_TONE_MAP_TYPE) {
     _112.rgb *= 0.5f;
@@ -68,10 +70,13 @@ float4 main(
   float _130 = ((_116.x * 0.1599999964237213f) * SunShafts_SunCol.x) + _112.x;
   float _131 = ((_116.y * 0.1599999964237213f) * SunShafts_SunCol.y) + _112.y;
   float _132 = ((_116.z * 0.1599999964237213f) * SunShafts_SunCol.z) + _112.z;
-  float _155 = (8333.3330078125f / exp2(min(max((log2(_108.y * 3030.30322265625f) - ((HDREyeAdaptation.z * 0.5f) * (min(max((log2((_108.y * 10000.0f) + 1.0f) * 0.3010300099849701f), 0.10000000149011612f), 5.199999809265137f) + -3.0f))), HDREyeAdaptation.x), HDREyeAdaptation.y) - HDREyeAdaptation.w)) * _102.x;
-  float _172 = ((saturate(HDRBloomColor.x) * (_104.x - _130)) + _130) * _155;
-  float _173 = ((saturate(HDRBloomColor.y) * (_104.y - _131)) + _131) * _155;
-  float _174 = ((saturate(HDRBloomColor.z) * (_104.z - _132)) + _132) * _155;
+  float bloom_strength = max(CUSTOM_BLOOM, 0.0f);
+  float vignette_strength = max(CUSTOM_VIGNETTE, 0.0f);
+  float vignette_mask = renodx::math::PowSafe(saturate(_102.x), vignette_strength);
+  float _155 = (8333.3330078125f / exp2(min(max((log2(_108.y * 3030.30322265625f) - ((HDREyeAdaptation.z * 0.5f) * (min(max((log2((_108.y * 10000.0f) + 1.0f) * 0.3010300099849701f), 0.10000000149011612f), 5.199999809265137f) + -3.0f))), HDREyeAdaptation.x), HDREyeAdaptation.y) - HDREyeAdaptation.w)) * vignette_mask;
+  float _172 = ((saturate(HDRBloomColor.x) * bloom_strength * (_104.x - _130)) + _130) * _155;
+  float _173 = ((saturate(HDRBloomColor.y) * bloom_strength * (_104.y - _131)) + _131) * _155;
+  float _174 = ((saturate(HDRBloomColor.z) * bloom_strength * (_104.z - _132)) + _132) * _155;
   float _175 = dot(float3(_172, _173, _174), float3(0.2125999927520752f, 0.7152000069618225f, 0.0722000002861023f));
   float _190 = ((HDRColorBalance.w * (_172 - _175)) + _175) * HDRColorBalance.x;
   float _191 = ((HDRColorBalance.w * (_173 - _175)) + _175) * HDRColorBalance.y;
@@ -113,11 +118,12 @@ float4 main(
   float3 color_linear = float3(_337, _338, _339);
 
   if (RENODX_TONE_MAP_TYPE) {
-    color_linear = renodx::color::srgb::DecodeSafe(color_linear);
+    color_linear = renodx::color::gamma::DecodeSafe(color_linear, 2.2f);
+    color_linear = max(color_linear, 0.f);
   } else {
     color_linear = renodx::color::gamma::DecodeSafe(color_linear);
+    color_linear = saturate(color_linear);
   }
-  color_linear = saturate(color_linear);
   _337 = color_linear.r;
   _338 = color_linear.g;
   _339 = color_linear.b;
@@ -185,9 +191,15 @@ float4 main(
     SV_Target.y = (((((1.0f - _530) * HDRTonemappingParams.y) * (pow(_516, HDRTonemappingParams.w))) + ((_530 - _540) * (lerp(HDRTonemappingParams.y, _502, HDRTonemappingParams.x)))) + ((HDRDisplayParams.x - (exp2(((_502 - _509) * 1.4426950216293335f) * _555) * _513)) * _540));
     SV_Target.z = (((((1.0f - _532) * HDRTonemappingParams.y) * (pow(_517, HDRTonemappingParams.w))) + ((_532 - _541) * (lerp(HDRTonemappingParams.y, _505, HDRTonemappingParams.x)))) + ((HDRDisplayParams.x - (exp2(((_505 - _509) * 1.4426950216293335f) * _555) * _513)) * _541));
   } else {
-    SV_Target.rgb = float3(_485, _487, _489);
-    SV_Target.rgb = renodx::draw::ToneMapPass(SV_Target.rgb);
-    SV_Target.rgb = renodx::draw::RenderIntermediatePass(SV_Target.rgb);
+    float3 scene_linear = max(float3(_485, _487, _489), 0.f);
+    scene_linear = ApplyInjectedColorGrading(scene_linear);
+
+    float diffuse_white = max(RENODX_DIFFUSE_WHITE_NITS, 1e-4f);
+    float peak_ratio = max(RENODX_PEAK_WHITE_NITS / diffuse_white, 1.f);
+
+    float3 scene_tonemapped = renodx::tonemap::neutwo::BT709(scene_linear, peak_ratio);
+    scene_tonemapped = ApplyBT2020GamutCompression(scene_tonemapped);
+    SV_Target.rgb = scene_tonemapped * diffuse_white;
   }
   SV_Target.w = 1.0f;
   return SV_Target;

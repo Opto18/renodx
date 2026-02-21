@@ -19,6 +19,7 @@ struct ShaderInjectData {
   float tone_map_hue_correction;
   float tone_map_hue_shift;
   float fxBloom;
+  float fxVignette;
 };
 
 #ifndef __cplusplus
@@ -42,11 +43,10 @@ cbuffer shader_injection : register(b13) {
 #define RENODX_TONE_MAP_HIGHLIGHT_SATURATION shader_injection.tone_map_highlight_saturation
 #define RENODX_TONE_MAP_BLOWOUT              shader_injection.tone_map_blowout
 #define RENODX_TONE_MAP_FLARE                shader_injection.tone_map_flare
+#define RENODX_TONE_MAP_HUE_CORRECTION       shader_injection.tone_map_hue_correction
+#define RENODX_TONE_MAP_HUE_SHIFT            shader_injection.tone_map_hue_shift
 #define CUSTOM_BLOOM                         shader_injection.fxBloom
-#define RENODX_RENO_DRT_TONE_MAP_METHOD      renodx::tonemap::renodrt::config::tone_map_method::HERMITE_SPLINE
-#define RENODX_SWAP_CHAIN_OUTPUT_PRESET      renodx::draw::SWAP_CHAIN_OUTPUT_PRESET_SCRGB
-#define RENODX_INTERMEDIATE_ENCODING         renodx::draw::GAMMA_CORRECTION_NONE
-
+#define CUSTOM_VIGNETTE                      shader_injection.fxVignette
 #if (__SHADER_TARGET_MAJOR >= 6)
 #pragma dxc diagnostic ignored "-Wparentheses-equality"
 #endif

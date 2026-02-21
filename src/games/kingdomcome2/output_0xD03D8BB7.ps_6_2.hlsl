@@ -61,15 +61,20 @@ float4 main(
   float3 _105 = bloomTex.Sample(linearClampSS, float2(TEXCOORD_1.x, TEXCOORD_1.y));
   float4 _109 = luminanceTex.Load(int3(0, 0, 0));
   float3 _113 = hdrTex.Load(int3(int(SV_Position.x), int(SV_Position.y), 0));
-  _113.rgb *= CalculateExposure(_109.y);  // New Luminance
+  if (RENODX_TONE_MAP_TYPE) {
+    _113.rgb *= CalculateExposure(_109.y);
+  }
   float4 _117 = sunShaftsTex.Sample(linearClampSS, float2(TEXCOORD_1.x, TEXCOORD_1.y));
   float _131 = ((_117.x * 0.1599999964237213f) * SunShafts_SunCol.x) + _113.x;
   float _132 = ((_117.y * 0.1599999964237213f) * SunShafts_SunCol.y) + _113.y;
   float _133 = ((_117.z * 0.1599999964237213f) * SunShafts_SunCol.z) + _113.z;
-  float _156 = (8333.3330078125f / exp2(min(max((log2(_109.y * 3030.30322265625f) - ((HDREyeAdaptation.z * 0.5f) * (min(max((log2((_109.y * 10000.0f) + 1.0f) * 0.3010300099849701f), 0.10000000149011612f), 5.199999809265137f) + -3.0f))), HDREyeAdaptation.x), HDREyeAdaptation.y) - HDREyeAdaptation.w)) * _103.x;
-  float _173 = ((saturate(HDRBloomColor.x) * (_105.x - _131)) + _131) * _156;
-  float _174 = ((saturate(HDRBloomColor.y) * (_105.y - _132)) + _132) * _156;
-  float _175 = ((saturate(HDRBloomColor.z) * (_105.z - _133)) + _133) * _156;
+  float bloom_strength = max(CUSTOM_BLOOM, 0.0f);
+  float vignette_strength = max(CUSTOM_VIGNETTE, 0.0f);
+  float vignette_mask = renodx::math::PowSafe(saturate(_103.x), vignette_strength);
+  float _156 = (8333.3330078125f / exp2(min(max((log2(_109.y * 3030.30322265625f) - ((HDREyeAdaptation.z * 0.5f) * (min(max((log2((_109.y * 10000.0f) + 1.0f) * 0.3010300099849701f), 0.10000000149011612f), 5.199999809265137f) + -3.0f))), HDREyeAdaptation.x), HDREyeAdaptation.y) - HDREyeAdaptation.w)) * vignette_mask;
+  float _173 = ((saturate(HDRBloomColor.x) * bloom_strength * (_105.x - _131)) + _131) * _156;
+  float _174 = ((saturate(HDRBloomColor.y) * bloom_strength * (_105.y - _132)) + _132) * _156;
+  float _175 = ((saturate(HDRBloomColor.z) * bloom_strength * (_105.z - _133)) + _133) * _156;
   float _176 = dot(float3(_173, _174, _175), float3(0.2125999927520752f, 0.7152000069618225f, 0.0722000002861023f));
   float _191 = ((HDRColorBalance.w * (_173 - _176)) + _176) * HDRColorBalance.x;
   float _192 = ((HDRColorBalance.w * (_174 - _176)) + _176) * HDRColorBalance.y;
@@ -115,11 +120,12 @@ float4 main(
   float3 color_linear = float3(_368, _369, _370);
 
   if (RENODX_TONE_MAP_TYPE) {
-    color_linear = renodx::color::srgb::DecodeSafe(color_linear);
+    color_linear = renodx::color::gamma::DecodeSafe(color_linear, 2.2f);
+    color_linear = max(color_linear, 0.f);
   } else {
     color_linear = renodx::color::gamma::DecodeSafe(color_linear);
+    color_linear = saturate(color_linear);
   }
-  color_linear = saturate(color_linear);
   _368 = color_linear.r;
   _369 = color_linear.g;
   _370 = color_linear.b;
@@ -187,9 +193,16 @@ float4 main(
     SV_Target.y = (((((1.0f - _561) * HDRTonemappingParams.y) * (pow(_547, HDRTonemappingParams.w))) + ((_561 - _571) * (lerp(HDRTonemappingParams.y, _533, HDRTonemappingParams.x)))) + ((HDRDisplayParams.x - (exp2(((_533 - _540) * 1.4426950216293335f) * _586) * _544)) * _571));
     SV_Target.z = (((((1.0f - _563) * HDRTonemappingParams.y) * (pow(_548, HDRTonemappingParams.w))) + ((_563 - _572) * (lerp(HDRTonemappingParams.y, _536, HDRTonemappingParams.x)))) + ((HDRDisplayParams.x - (exp2(((_536 - _540) * 1.4426950216293335f) * _586) * _544)) * _572));
   } else {
-    SV_Target.rgb = float3(_516, _518, _520);
-    SV_Target.rgb = renodx::draw::ToneMapPass(SV_Target.rgb);
-    SV_Target.rgb = renodx::draw::RenderIntermediatePass(SV_Target.rgb);
+    float3 scene_linear = max(float3(_516, _518, _520), 0.f);
+    scene_linear = ApplyInjectedColorGrading(scene_linear);
+
+    float diffuse_white = max(RENODX_DIFFUSE_WHITE_NITS, 1e-4f);
+    float peak_ratio = max(RENODX_PEAK_WHITE_NITS / diffuse_white, 1.f);
+
+    float3 scene_tonemapped = renodx::tonemap::neutwo::BT709(scene_linear, peak_ratio);
+
+    scene_tonemapped = ApplyBT2020GamutCompression(scene_tonemapped);
+    SV_Target.rgb = scene_tonemapped * diffuse_white;
   }
   SV_Target.w = 1.0f;
   return SV_Target;

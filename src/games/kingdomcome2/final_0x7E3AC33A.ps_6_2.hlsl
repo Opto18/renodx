@@ -1,7 +1,6 @@
 #include "./shared.h"
 
 Texture2D<float4> Tx2Tx_Source : register(t0);
-
 Texture2D<float4> UITex_Source : register(t1);
 
 cbuffer PER_BATCH : register(b0, space2) {
@@ -10,42 +9,43 @@ cbuffer PER_BATCH : register(b0, space2) {
 
 SamplerState Tx2Tx_Sampler : register(s2);
 
+float3 ApplyLuminancePeakRolloff(float3 color_bt2020_rel) {
+  float peak_rel = max(RENODX_PEAK_WHITE_NITS / RENODX_DIFFUSE_WHITE_NITS, 1.f);
+  float knee_rel = max(peak_rel * 0.75f, 1e-4f);
+
+  float luminance = renodx::color::y::from::BT2020(color_bt2020_rel);
+  if (luminance <= knee_rel) return color_bt2020_rel;
+
+  float rolled_luminance = renodx::tonemap::ExponentialRollOff(luminance, knee_rel, peak_rel);
+  float scale = rolled_luminance / max(luminance, 1e-6f);
+  return color_bt2020_rel * scale;
+}
+
 float4 main(
   noperspective float4 SV_Position : SV_Position,
   linear float2 TEXCOORD : TEXCOORD
 ) : SV_Target {
-  float4 SV_Target;
-  float4 _7 = Tx2Tx_Source.Sample(Tx2Tx_Sampler, float2(TEXCOORD.x, TEXCOORD.y));
-  float4 _12 = UITex_Source.Sample(Tx2Tx_Sampler, float2(TEXCOORD.x, TEXCOORD.y));
-  float ui_scale = HDRParams.y;  // 6.8f
+  float4 scene_sample = Tx2Tx_Source.Sample(Tx2Tx_Sampler, TEXCOORD);
+  float4 ui_sample = UITex_Source.Sample(Tx2Tx_Sampler, TEXCOORD);
 
-  if (RENODX_TONE_MAP_TYPE) {
-    ui_scale = 1;
-  } else {
-    // Vanilla unnecessarily converts to bt2020 in output
-    _7.rgb = renodx::color::bt709::from::BT2020(_7.rgb);
-  }
-  float _19 = _7.r, _22 = _7.g, _25 = _7.b;
-  /* float _19 = mad(-0.07283999770879745f, _7.z, mad(-0.5876560211181641f, _7.y, (_7.x * 1.6604959964752197f)));
-  float _22 = mad(-0.00834800023585558f, _7.z, mad(1.1328949928283691f, _7.y, (_7.x * -0.12454699724912643f)));
-  float _25 = mad(1.118751049041748f, _7.z, mad(-0.10059700161218643f, _7.y, (_7.x * -0.018154000863432884f))); */
-  float _31 = 1.0f / (max(_19, max(_22, _25)) + 1.0f);
-  float _41 = (pow(_12.x, 2.200000047683716f)) * ui_scale;
-  float _42 = (pow(_12.y, 2.200000047683716f)) * ui_scale;
-  float _43 = (pow(_12.z, 2.200000047683716f)) * ui_scale;
-  float _47 = 1.0f / (max(_41, max(_42, _43)) + 1.0f);
-  float _54 = 1.0f - _12.w;
-  float _61 = ((_41 * _12.w) * _47) + ((_54 * _19) * _31);
-  float _62 = ((_42 * _12.w) * _47) + ((_22 * _54) * _31);
-  float _63 = ((_43 * _12.w) * _47) + ((_25 * _54) * _31);
-  float _68 = 1.0f / (1.0f - min(max(_61, max(_62, _63)), 0.9998999834060669f));
-  SV_Target.x = (_68 * _61);
-  SV_Target.y = (_68 * _62);
-  SV_Target.z = (_68 * _63);
+  // KCD2 scene is authored around 80-nit paper white. Remap to Reno diffuse-relative space.
+  float3 scene_rel = max(scene_sample.rgb, 0.f) * (80.f / RENODX_DIFFUSE_WHITE_NITS);
 
-  if (RENODX_TONE_MAP_TYPE) {
-    SV_Target.rgb = renodx::draw::SwapChainPass(SV_Target.rgb);
-  }
-  SV_Target.w = _7.w;
-  return SV_Target;
+  float ui_alpha = saturate(ui_sample.a);
+  float3 ui_rel = renodx::color::srgb::DecodeSafe(saturate(ui_sample.rgb));
+  ui_rel = min(ui_rel, 1.f);
+  // Optional UI-vs-scene white control (defaults to 1.0 when both are 203).
+  ui_rel *= (RENODX_GRAPHICS_WHITE_NITS / RENODX_DIFFUSE_WHITE_NITS);
+
+  // Straight-alpha blend in one consistent relative-linear space.
+  float3 blended_rel = lerp(scene_rel, ui_rel, ui_alpha);
+
+  // HDR10 output: BT.709 -> BT.2020, apply soft peak rolloff, then PQ encode.
+  float3 blended_bt2020_rel = renodx::color::bt2020::from::BT709(blended_rel);
+  blended_bt2020_rel = ApplyLuminancePeakRolloff(blended_bt2020_rel);
+
+  float4 out_color;
+  out_color.rgb = renodx::color::pq::EncodeSafe(blended_bt2020_rel, RENODX_DIFFUSE_WHITE_NITS);
+  out_color.a = scene_sample.a;
+  return out_color;
 }
