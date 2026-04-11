@@ -43,9 +43,49 @@ renodx::utils::settings::Settings settings = renodx::templates::settings::JoinSe
         {"ColorGradeHighlightSaturation", &shader_injection.tone_map_highlight_saturation},
         {"ColorGradeBlowout", &shader_injection.tone_map_blowout},
         {"ColorGradeFlare", &shader_injection.tone_map_flare},
-        // {"FxBloom", &shader_injection.fxBloom},
     }),
     {
+        new renodx::utils::settings::Setting{
+            .key = "FxBloom",
+            .binding = &shader_injection.fxBloom,
+            .default_value = 50.f,
+            .label = "Bloom",
+            .section = "Effects",
+            .max = 100.f,
+            .parse = [](float value) { return value * 0.02f; },
+        },
+        new renodx::utils::settings::Setting{
+            .key = "FxVignette",
+            .binding = &shader_injection.fxVignette,
+            .default_value = 50.f,
+            .label = "Vignette",
+            .section = "Effects",
+            .max = 100.f,
+            .parse = [](float value) { return value * 0.02f; },
+        },
+        new renodx::utils::settings::Setting{
+            .value_type = renodx::utils::settings::SettingValueType::BUTTON,
+            .label = "Reset All",
+            .section = "Options",
+            .group = "button-line-0",
+            .on_change = []() {
+              for (auto* setting : settings) {
+                if (setting->key.empty()) continue;
+                if (!setting->can_reset) continue;
+                renodx::utils::settings::UpdateSetting(setting->key, setting->default_value);
+              }
+            },
+        },
+        new renodx::utils::settings::Setting{
+            .value_type = renodx::utils::settings::SettingValueType::TEXT,
+            .label = "Game mod by Ritsu, Updated by Opto, RenoDX Framework by ShortFuse. Shout-out to Pumbo & Lilium for the support!",
+            .section = "About",
+        },
+        new renodx::utils::settings::Setting{
+            .value_type = renodx::utils::settings::SettingValueType::TEXT,
+            .label = "This build was compiled on " + build_date + " at " + build_time + ".",
+            .section = "About",
+        },
         new renodx::utils::settings::Setting{
             .value_type = renodx::utils::settings::SettingValueType::BUTTON,
             .label = "HDR Den Discord",
@@ -95,16 +135,6 @@ renodx::utils::settings::Settings settings = renodx::templates::settings::JoinSe
               renodx::utils::platform::LaunchURL("https://ko-fi.com/hdrden");
             },
         },
-        new renodx::utils::settings::Setting{
-            .value_type = renodx::utils::settings::SettingValueType::TEXT,
-            .label = "Game mod by Ritsu, RenoDX Framework by ShortFuse. Shout-out to Pumbo & Lilium for the support!",
-            .section = "About",
-        },
-        new renodx::utils::settings::Setting{
-            .value_type = renodx::utils::settings::SettingValueType::TEXT,
-            .label = "This build was compiled on " + build_date + " at " + build_time + ".",
-            .section = "About",
-        },
     },
 });
 
@@ -121,6 +151,8 @@ void OnPresetOff() {
       {"ColorGradeHighlightSaturation", 50.f},
       {"ColorGradeBlowout", 0.f},
       {"ColorGradeFlare", 0.f},
+      {"FxBloom", 50.f},
+      {"FxVignette", 50.f},
   });
 }
 

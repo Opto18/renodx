@@ -68,10 +68,11 @@ float4 main(
   float _130 = ((_116.x * 0.1599999964237213f) * SunShafts_SunCol.x) + _112.x;
   float _131 = ((_116.y * 0.1599999964237213f) * SunShafts_SunCol.y) + _112.y;
   float _132 = ((_116.z * 0.1599999964237213f) * SunShafts_SunCol.z) + _112.z;
-  float _155 = (8333.3330078125f / exp2(min(max((log2(_108.y * 3030.30322265625f) - ((HDREyeAdaptation.z * 0.5f) * (min(max((log2((_108.y * 10000.0f) + 1.0f) * 0.3010300099849701f), 0.10000000149011612f), 5.199999809265137f) + -3.0f))), HDREyeAdaptation.x), HDREyeAdaptation.y) - HDREyeAdaptation.w)) * _102.x;
-  float _172 = ((saturate(HDRBloomColor.x) * (_104.x - _130)) + _130) * _155;
-  float _173 = ((saturate(HDRBloomColor.y) * (_104.y - _131)) + _131) * _155;
-  float _174 = ((saturate(HDRBloomColor.z) * (_104.z - _132)) + _132) * _155;
+  float _155 = 8333.3330078125f / exp2(min(max((log2(_108.y * 3030.30322265625f) - ((HDREyeAdaptation.z * 0.5f) * (min(max((log2((_108.y * 10000.0f) + 1.0f) * 0.3010300099849701f), 0.10000000149011612f), 5.199999809265137f) + -3.0f))), HDREyeAdaptation.x), HDREyeAdaptation.y) - HDREyeAdaptation.w);
+  float _156 = lerp(1.0f, pow(max(saturate(_102.x), 0.0001f), max(1.0f, CUSTOM_VIGNETTE)), min(1.0f, CUSTOM_VIGNETTE));
+  float _172 = ((saturate(HDRBloomColor.x) * CUSTOM_BLOOM * (_104.x - _130)) + _130) * _155 * _156;
+  float _173 = ((saturate(HDRBloomColor.y) * CUSTOM_BLOOM * (_104.y - _131)) + _131) * _155 * _156;
+  float _174 = ((saturate(HDRBloomColor.z) * CUSTOM_BLOOM * (_104.z - _132)) + _132) * _155 * _156;
   float _175 = dot(float3(_172, _173, _174), float3(0.2125999927520752f, 0.7152000069618225f, 0.0722000002861023f));
   float _190 = ((HDRColorBalance.w * (_172 - _175)) + _175) * HDRColorBalance.x;
   float _191 = ((HDRColorBalance.w * (_173 - _175)) + _175) * HDRColorBalance.y;
